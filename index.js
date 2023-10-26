@@ -110,6 +110,83 @@ app.post('/api/signin', async (req, res) => {
 });
 
 
+app.post('/api/delete-listings', async (req, res) => {
+  try {
+    const params = req.body;
+    const tableName = params['tableName'];
+    const records = params['recordsToDelete'];
+    const selectedDate = params['selectedDate'];
+    const username = req.body['userName'];
+
+    if (username !== 'adminangel') {
+      return res.status(401).json({ error: 'Unauthorized: Only admin can perform deletions' });
+    }
+
+    if (!tableName) {
+      return res.status(400).json({ error: 'Table name is required' });
+    }
+
+    if (!records && !selectedDate) {
+      return res.status(400).json({ error: 'Either recordsToDelete or selectedDate is required' });
+    }
+
+    const connection = await mysql.createConnection(dbConfig);
+
+    await connection.beginTransaction();
+
+    try {
+      if (records) {
+
+        if (!Array.isArray(records) || records.length === 0) {
+          return res.status(400).json({ error: 'Invalid input' });
+        }
+
+        for (const record of records) {
+
+          if (tableName === 'tnledger_courts' || tableName === 'tn_public_notice_probate_notice') {
+            await connection.execute(
+              `DELETE FROM ${tableName} WHERE id = ?`,
+              [record]
+            );
+          } else {
+            if (tableName === 'tn_courts') {
+              await connection.execute(
+                `DELETE FROM ${tableName} WHERE url = ?`,
+                [record]
+              );
+            } else {
+              await connection.execute(
+                `DELETE FROM ${tableName} WHERE tdn_no = ?`,
+                [record]
+              );
+            }
+          }
+        }
+      } else if (selectedDate) {
+        const formattedDate = tableName === 'tn_public_notice_probate_notice' ? selectedDate : selectedDate + 'T00:00:00.000Z';
+        await connection.execute(
+          `DELETE FROM ${tableName} WHERE date_ran = ?`,
+          [formattedDate]
+        );
+      }
+
+
+      await connection.commit();
+      connection.end();
+      res.status(200).json({ message: 'Records deleted successfully' });
+    } catch (error) {
+
+      await connection.rollback();
+      connection.end();
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error deleting records:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+
 // For User Accounts
 
 app.post('/api/create-user', async (req, res) => {
